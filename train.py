@@ -6,7 +6,8 @@ from torchmetrics import F1Score
 from torchvision import transforms
 
 from torch.utils.data import DataLoader, Dataset
-from models.example_model import ExModel
+from models.resnet import ResNet18
+from models.vgg import VGG16
 from datasets.dataset_retrieval import custom_dataset
 from torch.optim import SGD, Adam
 from torch.utils.tensorboard import SummaryWriter
@@ -15,14 +16,11 @@ import tqdm
 import os
 
 save_model_path = "checkpoints/"
-pth_name = "saved_model.pth"
-
-
 
 
 def val(model, data_val, loss_function, writer, epoch, device):
     f1score = 0
-    f1 = F1Score(num_classes=53, task = 'multiclass')
+    f1 = F1Score(num_classes=62, task = 'multiclass')
     data_iterator = enumerate(data_val)  # take batches
     f1_list = []
     f1t_list = []
@@ -64,8 +62,9 @@ def val(model, data_val, loss_function, writer, epoch, device):
     return None
 
 
-def train(model, train_loader, val_loader, optimizer, loss_fn, n_epochs, device):
-    writer = SummaryWriter()
+def train(model, train_loader, val_loader, optimizer, loss_fn, n_epochs, device, log_dir):
+  
+    writer = SummaryWriter(log_dir=os.path.join('runs', log_dir))
 
     model.to(device)  # Move the model to the specified device (e.g., GPU or CPU)
     model.train()  # Set the model to training mode
@@ -117,43 +116,74 @@ def train(model, train_loader, val_loader, optimizer, loss_fn, n_epochs, device)
             'optimizer': optimizer.state_dict()
         }
 
-        torch.save(checkpoint, os.path.join(save_model_path, pth_name))
+        torch.save(checkpoint, os.path.join(save_model_path, log_dir+'.pth'))
         print("saved the model " + save_model_path)
 
 
 
 
-def main():
-    device = "cpu"
-    tr = transforms.Compose([
+def main(model_name, optimizer_name, lr, pretrained, log_dir):
+    
+    device = "cuda"
+    
+    tr_train = transforms.Compose([
+        transforms.RandomRotation(45, fill=255),
+        # transforms.RandomPerspective(distortion_scale=0.2, p=0.5, interpolation=3, fill=255),
+        transforms.RandomAffine(degrees=0, scale=(0.6, 1.2), fill=255),
+        transforms.Resize([250, 250]),
+        transforms.RandomCrop(224),
         transforms.ToTensor(),
-        transforms.Resize([224, 224])
+        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
     ])
 
-    train_data = custom_dataset("train", transforms=tr)
-    val_data = custom_dataset("val", transforms= tr)
+    tr_val = transforms.Compose([
+        transforms.Resize([224, 224]),
+        transforms.ToTensor(),
+        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+    ])
+    
+    train_data = custom_dataset("train", transforms=tr_train)
+    val_data = custom_dataset("val", transforms=tr_val)
 
     train_loader = DataLoader(
         train_data,
-        batch_size=4,
+        batch_size=32,
         shuffle=True
     )
-
+    
     val_loader = DataLoader(
         val_data,
-        batch_size=2,
+        batch_size=32,
         drop_last=True
     )
+    
+    max_epoch = 25
 
-    model = ExModel().to(device)   # Initialsing an object of the class.
-    optimizer = SGD(model.parameters(), lr=0.5)
+    if model_name=='resnet':
+        model = ResNet18(num_classes=62, pretrained=pretrained).to(device)
+    elif model_name=='vgg':
+        model = VGG16(num_classes=62, pretrained=pretrained).to(device)
+    
+    if optimizer_name=='sgd':
+        optimizer = SGD(model.parameters(), lr=lr, momentum = 0.9)
+    elif optimizer_name=='adam':
+        optimizer = Adam(model.parameters(), lr=lr)
+    
     loss = nn.CrossEntropyLoss()
 
-    max_epoch = 15
-
-
-    train(model, train_loader, val_loader,  optimizer, loss, max_epoch, device)
+    train(model, train_loader, val_loader, optimizer, loss, max_epoch, device, log_dir)
     
     
 if __name__ == "__main__":
-    main()
+    
+    main(model_name='resnet', optimizer_name='sgd', lr=5e-3, pretrained=False, log_dir='resnet_sgd')
+    main(model_name='resnet', optimizer_name='adam', lr=1e-4, pretrained=False, log_dir='resnet_adam')
+    
+    main(model_name='resnet', optimizer_name='sgd', lr=5e-4, pretrained=True, log_dir='resnet_sgd_pretrained')
+    main(model_name='resnet', optimizer_name='adam', lr=5e-5, pretrained=True, log_dir='resnet_adam_pretrained')
+    
+    main(model_name='vgg', optimizer_name='sgd', lr=5e-3, pretrained=False, log_dir='vgg_sgd')
+    main(model_name='vgg', optimizer_name='adam', lr=1e-4, pretrained=False, log_dir='vgg_adam')
+    
+    main(model_name='vgg', optimizer_name='sgd', lr=5e-4, pretrained=True, log_dir='vgg_sgd_pretrained')
+    main(model_name='vgg', optimizer_name='adam', lr=5e-5, pretrained=True, log_dir='vgg_adam_pretrained')

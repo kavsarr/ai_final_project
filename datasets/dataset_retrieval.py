@@ -38,7 +38,7 @@ class custom_dataset(Dataset):
         label = self.label_list[index]
         
         
-        image = Image.open(image_name)
+        image = Image.open(image_name).convert("RGB")
         if(self.transforms):
             image = self.transforms(image)
         

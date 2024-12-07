@@ -1,5 +1,9 @@
 template
+datasets/augmented_images
+datasets/handwritten-english-characters-and-digits
 datasets/demo_dataset
 *pth
 __pycache__
 runs
+env
+archieve
