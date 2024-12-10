@@ -1,5 +1,5 @@
 import torch
-from torchmetrics import F1Score, Accuracy
+from torchmetrics import F1Score, Accuracy, ConfusionMatrix
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from datasets.dataset_retrieval import custom_dataset
@@ -8,12 +8,33 @@ import tqdm
 import os
 from models.resnet import ResNet18
 from models.vgg import VGG16
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
 
 
-def test(model, test_loader, device):
+def plot_confusion_matrix(cm, log_dir):
+    classes = os.listdir('datasets/demo_dataset/train')
+    classes.sort()
+    
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=classes, yticklabels=classes)
+    plt.xlabel('Predicted Labels')
+    plt.ylabel('True Labels')
+    plt.title('Confusion Matrix')
+    plt.tight_layout()
+    save_path = os.path.join("plots", f"{log_dir}_confusion_matrix.png")
+    os.makedirs("plots", exist_ok=True)
+    plt.savefig(save_path)
+    print(f"Confusion matrix saved at: {save_path}")
+    plt.show()
+
+
+def test(model, test_loader, device, log_dir):
     
     f1 = F1Score(num_classes=62, task='multiclass')
     acc = Accuracy(num_classes=62, task='multiclass')
+    cm_metric = ConfusionMatrix(num_classes=62, task='multiclass')
 
     y_test = []
     y_pred = []
@@ -43,9 +64,11 @@ def test(model, test_loader, device):
 
         f1_score = f1(torch.tensor(y_pred), torch.tensor(y_test))
         acc_score = acc(torch.tensor(y_pred), torch.tensor(y_test))
+        confusion_matrix = cm_metric(torch.tensor(y_pred), torch.tensor(y_test))
 
         tq.close()
         print(f"F1: {f1_score} Accuracy: {acc_score}")
+        plot_confusion_matrix(confusion_matrix.cpu().numpy(), log_dir)
 
     return None
 
@@ -65,7 +88,7 @@ def main(model_name, log_dir):
     test_loader = DataLoader(
         test_data,
         batch_size=32,
-        drop_last=True
+        drop_last=False
     )
 
     if model_name == 'resnet':
@@ -79,7 +102,7 @@ def main(model_name, log_dir):
     
     print(f"Loaded model from {checkpoint_path}")
 
-    test(model, test_loader, device)
+    test(model, test_loader, device, log_dir)
 
 
 if __name__ == "__main__":
